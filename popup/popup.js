@@ -1,64 +1,72 @@
 document.addEventListener('DOMContentLoaded', async () => {
-  // Load saved settings
-  const { 
-    blockedKeywords, 
-    distanceThreshold, 
-    isActive,
-    stats 
-  } = await chrome.storage.sync.get([
-    'blockedKeywords',
-    'distanceThreshold',
-    'isActive',
-    'stats'
-  ]);
+  const elements = {
+    toggleActive: document.getElementById('toggleActive'),
+    blockedKeywords: document.getElementById('blockedKeywords'),
+    distanceThreshold: document.getElementById('distanceThreshold'),
+    thresholdValue: document.getElementById('thresholdValue'),
+    blockedCount: document.getElementById('blockedCount'),
+    warningsCount: document.getElementById('warningsCount'),
+    saveBtn: document.getElementById('saveBtn')
+  };
 
-  // Initialize UI
-  document.getElementById('blockedKeywords').value = blockedKeywords?.join(', ') || '';
-  document.getElementById('distanceThreshold').value = distanceThreshold || 150;
-  document.getElementById('thresholdValue').textContent = distanceThreshold || 150;
-  document.getElementById('toggleExtension').checked = isActive !== false;
-  
-  // Update stats
-  document.getElementById('blockedCount').textContent = stats?.videosBlocked || 0;
-  document.getElementById('distanceWarnings').textContent = stats?.warningsTriggered || 0;
+  // Load settings
+  const settings = await getSettings();
+  elements.toggleActive.checked = settings.isActive !== false;
+  elements.blockedKeywords.value = settings.blockedKeywords?.join(', ') || '';
+  elements.distanceThreshold.value = settings.distanceThreshold || 150;
+  elements.thresholdValue.textContent = elements.distanceThreshold.value;
 
-  // Threshold slider
-  document.getElementById('distanceThreshold').addEventListener('input', (e) => {
-    document.getElementById('thresholdValue').textContent = e.target.value;
+  // Load stats
+  const stats = await getStats();
+  elements.blockedCount.textContent = stats.videosBlocked || 0;
+  elements.warningsCount.textContent = stats.warningsTriggered || 0;
+
+  // Event listeners
+  elements.distanceThreshold.addEventListener('input', () => {
+    elements.thresholdValue.textContent = elements.distanceThreshold.value;
   });
 
-  // Save settings
-  document.getElementById('saveSettings').addEventListener('click', async () => {
-    const blockedKeywords = document.getElementById('blockedKeywords').value
-      .split(',')
-      .map(k => k.trim())
-      .filter(k => k.length > 0);
-    
-    const distanceThreshold = parseInt(document.getElementById('distanceThreshold').value);
-    const isActive = document.getElementById('toggleExtension').checked;
-    
-    await chrome.storage.sync.set({
-      blockedKeywords,
-      distanceThreshold,
-      isActive
+  elements.saveBtn.addEventListener('click', saveSettings);
+
+  // Functions
+  async function getSettings() {
+    return new Promise(resolve => {
+      chrome.runtime.sendMessage(
+        { type: 'GET_SETTINGS' },
+        response => resolve(response || {})
+      );
+    });
+  }
+
+  async function getStats() {
+    return new Promise(resolve => {
+      chrome.runtime.sendMessage(
+        { type: 'GET_STATS' },
+        response => resolve(response || {})
+      );
+    });
+  }
+
+  async function saveSettings() {
+    const settings = {
+      isActive: elements.toggleActive.checked,
+      blockedKeywords: elements.blockedKeywords.value
+        .split(',')
+        .map(k => k.trim())
+        .filter(k => k.length > 0),
+      distanceThreshold: parseInt(elements.distanceThreshold.value)
+    };
+
+    await new Promise(resolve => {
+      chrome.runtime.sendMessage(
+        { type: 'UPDATE_SETTINGS', settings },
+        resolve
+      );
     });
 
-    // Send update to content scripts
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab?.id) {
-      chrome.tabs.sendMessage(tab.id, { 
-        type: 'SETTINGS_UPDATED',
-        blockedKeywords,
-        distanceThreshold,
-        isActive
-      });
-    }
-
-    // Show confirmation
-    const saveBtn = document.getElementById('saveSettings');
-    saveBtn.textContent = '✓ Saved!';
+    elements.saveBtn.textContent = 'Saved!';
     setTimeout(() => {
-      saveBtn.textContent = 'Save Settings';
+      elements.saveBtn.textContent = 'Save Settings';
     }, 2000);
-  });
+  }
 });

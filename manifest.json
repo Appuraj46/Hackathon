@@ -1,14 +1,11 @@
 {
   "manifest_version": 3,
   "name": "FocusGuard AI",
-  "version": "1.2",
-  "description": "Block distractions & monitor screen distance with real AI",
+  "version": "2.1",
+  "description": "Block distractions and monitor screen distance with AI",
   "permissions": [
     "storage",
     "activeTab",
-    "scripting",
-    "webNavigation",
-    "notifications",
     "alarms"
   ],
   "background": {

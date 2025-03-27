@@ -1,30 +1,37 @@
-// FocusGuard YouTube Content Blocker with Keyword-Aware Shorts Blocking
-class FocusGuardYouTube {
+class YouTubeBlocker {
   constructor() {
-    this.blockedCount = 0;
+    this.statsBuffer = { videosBlocked: 0 };
     this.currentKeywords = [];
-    this.setupObserver();
-    this.injectStyles();
-    this.handleShorts();
-    this.loadSettings();
+    this.observer = null;
+    this.init();
   }
 
-  async loadSettings() {
-    const { blockedKeywords } = await chrome.storage.sync.get(['blockedKeywords']);
-    this.currentKeywords = blockedKeywords || ['shorts', '#shorts'];
+  async init() {
+    try {
+      await this.injectStyles();
+      await this.loadSettings();
+      this.setupObservers();
+      this.startStatsFlusher();
+      console.log('YouTube Blocker initialized');
+    } catch (error) {
+      console.error('Initialization failed:', error);
+    }
   }
 
-  injectStyles() {
+  async injectStyles() {
+    if (document.head.querySelector('#fg-blocker-styles')) return;
+
     const style = document.createElement('style');
+    style.id = 'fg-blocker-styles';
     style.textContent = `
       .fg-blocked-container {
         position: relative;
         margin: 8px 0;
-        border-radius: 12px;
+        border-radius: 8px;
         overflow: hidden;
       }
       .fg-blocked-overlay {
-        background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+        background: #ffebee;
         padding: 16px;
         text-align: center;
         border: 1px solid #ef9a9a;
@@ -41,7 +48,6 @@ class FocusGuardYouTube {
         padding: 6px 12px;
         border-radius: 4px;
         cursor: pointer;
-        font-size: 13px;
       }
       .shorts-blocked-message {
         display: flex;
@@ -49,111 +55,218 @@ class FocusGuardYouTube {
         align-items: center;
         justify-content: center;
         height: 100%;
+        padding: 20px;
         background: #ffebee;
         color: #c62828;
-        padding: 20px;
         text-align: center;
       }
     `;
     document.head.appendChild(style);
   }
 
-  async blockContent() {
-    const { isActive } = await chrome.storage.sync.get(['isActive']);
-    if (!isActive) return;
+  async loadSettings() {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+      this.currentKeywords = response?.blockedKeywords || ['shorts', '#shorts'];
+      this.isActive = response?.isActive !== false;
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+      this.currentKeywords = ['shorts', '#shorts'];
+      this.isActive = true;
+    }
+  }
 
-    // Block regular videos
-    document.querySelectorAll('ytd-rich-item-renderer, ytd-video-renderer').forEach(video => {
-      if (video.classList.contains('fg-processed')) return;
-      
-      const title = video.querySelector('#video-title')?.textContent.toLowerCase();
-      if (title && this.currentKeywords.some(kw => title.includes(kw.toLowerCase()))) {
-        video.classList.add('fg-processed');
-        this.createBlockOverlay(video);
-        this.blockedCount++;
+  setupObservers() {
+    // Main observer for regular videos
+    this.observer = new MutationObserver(() => {
+      if (this.isActive) {
+        if (location.pathname.includes('/shorts/')) {
+          this.checkShorts();
+        } else {
+          this.checkVideos();
+        }
       }
     });
 
-    // Update stats
-    chrome.runtime.sendMessage({
-      type: 'UPDATE_STATS',
-      data: { videosBlocked: this.blockedCount }
+    this.observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+
+    // Additional check for initial load
+    setTimeout(() => {
+      if (location.pathname.includes('/shorts/')) {
+        this.checkShorts();
+      } else {
+        this.checkVideos();
+      }
+    }, 1000);
+
+    // Handle SPA navigation
+    window.addEventListener('yt-navigate-finish', () => {
+      if (this.isActive) {
+        if (location.pathname.includes('/shorts/')) {
+          this.checkShorts();
+        } else {
+          this.checkVideos();
+        }
+      }
     });
   }
 
-  async handleShorts() {
-    const checkShorts = async () => {
+  checkVideos() {
+    try {
+      document.querySelectorAll('ytd-rich-item-renderer, ytd-video-renderer').forEach(video => {
+        if (video.dataset.fgProcessed) return;
+        
+        const title = this.getVideoTitle(video);
+        if (title && this.shouldBlock(title)) {
+          this.blockVideo(video, title);
+        }
+      });
+    } catch (error) {
+      console.error('Video check error:', error);
+    }
+  }
+
+  checkShorts() {
+    try {
       const shortsPlayer = document.getElementById('shorts-player');
-      if (!shortsPlayer || shortsPlayer.classList.contains('fg-processed')) return;
-
-      // Get Shorts title (different from regular videos)
-      const titleElement = document.querySelector('.title.style-scope.ytd-reel-player-header-renderer');
-      const title = titleElement?.textContent.toLowerCase() || '';
-
-      // Only block if matches keywords
-      if (this.currentKeywords.some(kw => title.includes(kw.toLowerCase()))) {
-        shortsPlayer.classList.add('fg-processed');
-        shortsPlayer.innerHTML = `
-          <div class="shorts-blocked-message">
-            <h3>🚫 Shorts Blocked</h3>
-            <p>This short contains blocked keywords: "${title.substring(0, 20)}..."</p>
-            <button style="
-              background: #4285f4;
-              color: white;
-              border: none;
-              padding: 8px 16px;
-              border-radius: 4px;
-              margin-top: 12px;
-              cursor: pointer;
-            " onclick="this.parentNode.parentNode.classList.remove('fg-processed'); location.reload()">
-              Show Anyway
-            </button>
-          </div>
-        `;
-        this.blockedCount++;
+      if (!shortsPlayer || shortsPlayer.dataset.fgProcessed) return;
+      
+      const title = this.getShortsTitle();
+      if (title && this.shouldBlock(title)) {
+        this.blockShorts(shortsPlayer, title);
       }
-    };
-
-    // Check for Shorts periodically and on navigation
-    setInterval(checkShorts, 1000);
-    document.addEventListener('yt-navigate-finish', checkShorts);
+    } catch (error) {
+      console.error('Shorts check error:', error);
+    }
   }
 
-  createBlockOverlay(video) {
-    const container = document.createElement('div');
-    container.className = 'fg-blocked-container';
-    
-    const overlay = document.createElement('div');
-    overlay.className = 'fg-blocked-overlay';
-    overlay.innerHTML = `
-      <div class="fg-blocked-title">🚫 Blocked by FocusGuard</div>
-      <p>This content matches your blocked keywords</p>
-      <button class="fg-unblock-btn">Show Anyway</button>
-    `;
-    
-    container.appendChild(overlay);
-    video.parentNode.insertBefore(container, video);
-    video.style.display = 'none';
-    
-    overlay.querySelector('.fg-unblock-btn').addEventListener('click', () => {
-      container.remove();
-      video.style.display = '';
-    });
+  getVideoTitle(element) {
+    try {
+      return (
+        element.querySelector('#video-title')?.textContent?.toLowerCase() ||
+        element.querySelector('#video-title-link')?.textContent?.toLowerCase() ||
+        ''
+      );
+    } catch {
+      return '';
+    }
   }
 
-  setupObserver() {
-    const observer = new MutationObserver(() => this.blockContent());
-    observer.observe(document.body, { childList: true, subtree: true });
-    this.blockContent(); // Initial run
+  getShortsTitle() {
+    try {
+      return (
+        document.querySelector('.title.style-scope.ytd-reel-player-header-renderer')?.textContent?.toLowerCase() ||
+        document.querySelector('h1.title')?.textContent?.toLowerCase() ||
+        ''
+      );
+    } catch {
+      return '';
+    }
+  }
+
+  shouldBlock(title) {
+    return this.currentKeywords.some(keyword => 
+      keyword && title.includes(keyword.toLowerCase())
+    );
+  }
+
+  blockVideo(video, title) {
+    try {
+      video.dataset.fgProcessed = true;
+      
+      const container = document.createElement('div');
+      container.className = 'fg-blocked-container';
+      container.innerHTML = `
+        <div class="fg-blocked-overlay">
+          <div class="fg-blocked-title">🚫 Blocked by FocusGuard</div>
+          <p>${this.truncateText(title, 50)}</p>
+          <button class="fg-unblock-btn">Show Anyway</button>
+        </div>
+      `;
+      
+      video.parentNode.insertBefore(container, video);
+      video.style.display = 'none';
+      
+      container.querySelector('.fg-unblock-btn').addEventListener('click', () => {
+        container.remove();
+        video.style.display = '';
+        video.dataset.fgProcessed = false;
+      });
+      
+      this.statsBuffer.videosBlocked++;
+    } catch (error) {
+      console.error('Failed to block video:', error);
+    }
+  }
+
+  blockShorts(player, title) {
+    try {
+      player.dataset.fgProcessed = true;
+      player.innerHTML = `
+        <div class="shorts-blocked-message">
+          <h3>🚫 Blocked by FocusGuard</h3>
+          <p>${this.truncateText(title, 40)}</p>
+          <button onclick="location.reload()" style="
+            background: #4285f4;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            margin-top: 12px;
+            cursor: pointer;
+          ">
+            Back to Videos
+          </button>
+        </div>
+      `;
+      
+      this.statsBuffer.videosBlocked++;
+    } catch (error) {
+      console.error('Failed to block Shorts:', error);
+    }
+  }
+
+  truncateText(text, maxLength) {
+    return text.length > maxLength 
+      ? `${text.substring(0, maxLength)}...` 
+      : text;
+  }
+
+  startStatsFlusher() {
+    setInterval(() => this.flushStats(), 30000);
+  }
+
+  async flushStats() {
+    if (this.statsBuffer.videosBlocked > 0) {
+      try {
+        await chrome.runtime.sendMessage({
+          type: 'INCREMENT_STATS',
+          data: { videosBlocked: this.statsBuffer.videosBlocked }
+        });
+        this.statsBuffer.videosBlocked = 0;
+      } catch (error) {
+        console.error('Failed to update stats:', error);
+      }
+    }
+  }
+
+  cleanup() {
+    if (this.observer) {
+      this.observer.disconnect();
+    }
+    window.removeEventListener('yt-navigate-finish', this.checkShorts);
   }
 }
 
-// Initialize
-new FocusGuardYouTube();
-
-// Listen for settings changes
-chrome.runtime.onMessage.addListener((request) => {
-  if (request.type === 'SETTINGS_UPDATED') {
-    window.location.reload(); // Refresh to apply new keyword filters
-  }
-});
+// Initialize with protection
+if (!window.focusGuardYouTubeBlocker) {
+  window.focusGuardYouTubeBlocker = new YouTubeBlocker();
+  
+  // Cleanup on page unload
+  window.addEventListener('beforeunload', () => {
+    window.focusGuardYouTubeBlocker?.cleanup();
+  });
+}
