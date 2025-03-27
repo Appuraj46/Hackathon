@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>FocusGuard</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>FocusGuard</h1>
+      <div class="status-toggle">
+        <label class="switch">
+          <input type="checkbox" id="toggleExtension">
+          <span class="slider"></span>
+        </label>
+      </div>
+    </header>
+
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-value" id="blockedCount">0</div>
+        <div class="stat-label">Videos Blocked</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="distanceWarnings">0</div>
+        <div class="stat-label">Posture Alerts</div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h2>Content Blocking</h2>
+      <div class="form-group">
+        <label for="blockedKeywords">Block videos containing:</label>
+        <textarea id="blockedKeywords" placeholder="shorts, viral, clickbait"></textarea>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h2>Distance Monitor</h2>
+      <div class="form-group">
+        <label for="distanceThreshold">Sensitivity: <span id="thresholdValue">150</span>px</label>
+        <input type="range" id="distanceThreshold" min="100" max="300" step="10" value="150">
+      </div>
+    </div>
+
+    <button id="saveSettings" class="save-btn">Save Settings</button>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

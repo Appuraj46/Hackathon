@@ -1,18 +1,49 @@
 {
   "manifest_version": 3,
-  "name": "Feed Blocker",
-  "version": "1.0",
-  "description": "Block Instagram & YouTube content based on keywords.",
-  "permissions": ["storage"],
-  "host_permissions": ["https://www.youtube.com/*", "https://www.instagram.com/*"],
-  "action": {
-    "default_popup": "popup.html"
+  "name": "FocusGuard AI",
+  "version": "1.2",
+  "description": "Block distractions & monitor screen distance with real AI",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "webNavigation",
+    "notifications",
+    "alarms"
+  ],
+  "background": {
+    "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "matches": ["https://www.youtube.com/*", "https://www.instagram.com/*"],
-      "js": ["content.js"],
-      "run_at": "document_idle"
+      "matches": ["*://*.youtube.com/*"],
+      "js": [
+        "assets/face-api.min.js",
+        "content/youtube.js",
+        "content/distance.js"
+      ],
+      "css": ["content/content.css"],
+      "run_at": "document_end"
     }
-  ]
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "assets/icon16.png",
+      "48": "assets/icon48.png",
+      "128": "assets/icon128.png"
+    }
+  },
+  "web_accessible_resources": [{
+    "resources": [
+      "assets/models/*",
+      "assets/face-api.min.js"
+    ],
+    "matches": ["<all_urls>"]
+  }],
+  "icons": {
+    "16": "assets/icon16.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  }
 }
