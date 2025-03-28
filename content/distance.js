@@ -72,6 +72,7 @@ class DistanceMonitor {
         border-radius: 8px;
         border: 2px solid #4285f4;
         z-index: 99998;
+        opacity: 0;
         object-fit: cover;
         display: none;
       }
